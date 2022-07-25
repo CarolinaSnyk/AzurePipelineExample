@@ -1,0 +1,40 @@
+# Outputs the results to the pipeline
+
+# Prerequisites:
+# - Set a SNYK_TOKEN in the pipelines secrets
+# - Install the HTML viewer extension
+#   https://marketplace.visualstudio.com/items?itemName=JakubRumpca.azure-pipelines-html-report
+
+# NOTE: Change this to a different pool to run the scripts.
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+  - checkout: self
+
+  # .. your instructions on building the app or preparing the repository
+
+  # install & prepare snyk
+  - script: |
+      npm install snyk -g
+      npm install -g snyk snyk-to-html
+      snyk auth $(SNYK_TOKEN)
+
+      # explicitly allow scripts to continue if errors occur
+      set +e
+    displayName: 'snyk install & auth'
+
+ # snyk code
+  - script: |
+      snyk code test --sarif-file-output=results.sarif
+      RESULT=$?
+      snyk-to-html -o $(Build.ArtifactStagingDirectory)/results-code.html < results.sarif
+      exit $RESULT
+    continueOnError: true
+    displayName: 'snyk code'
+
+- task: PublishHtmlReport@1
+    condition: succeededOrFailed()
+    inputs:
+      reportDir: $(Build.ArtifactStagingDirectory)/results-code.html
+      tabName: 'Snyk Code'
