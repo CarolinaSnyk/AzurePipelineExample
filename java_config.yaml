@@ -1,0 +1,55 @@
+# Runs 4 Snyk Products (Code, Open Source, Container, IaC)
+# Outputs the results to the pipeline
+
+# Prerequisites:
+# - Set a SNYK_TOKEN in the pipelines secrets
+# - Install the HTML viewer extension
+#   https://marketplace.visualstudio.com/items?itemName=JakubRumpca.azure-pipelines-html-report
+
+# NOTE: Change this to a different pool to run the scripts.
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - checkout: self
+
+  # .. your instructions on building the app or preparing the repository
+
+  # install & prepare snyk
+  - script: |
+      npm install snyk -g
+      npm install -g snyk snyk-to-html
+
+      # This OPTIONAL step will configure the Snyk CLI to connect to the EU instance of Snyk.
+      # snyk config set use-base64-encoding=true
+      # snyk config set endpoint='https://app.eu.snyk.io/api'
+
+      snyk auth $(SNYK_TOKEN)
+
+      # explicitly allow scripts to continue if errors occur
+      set +e
+    displayName: 'snyk install & auth'
+
+  # snyk code
+  - script: |
+      snyk code test --json-file-output=results.json
+      RESULT=$?
+      snyk-to-html -o $(Build.ArtifactStagingDirectory)/results-code.html < results.json
+      exit $RESULT
+    continueOnError: true
+    displayName: 'snyk code'
+
+  # snyk open source
+  - script: |
+      snyk test --all-projects --json-file-output=results.json
+      RESULT=$?
+      snyk-to-html -o $(Build.ArtifactStagingDirectory)/results-open-source.html < results.json
+      exit $RESULT
+    continueOnError: true
+    displayName: 'snyk open source'
+ 
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Pipeline.Workspace)'
+      artifact: 'Snyk Reports'
+      publishLocation: 'pipeline'
